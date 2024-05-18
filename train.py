@@ -11,13 +11,15 @@ from importlib import import_module
 from sam_lora_image_encoder import LoRA_Sam
 from segment_anything import sam_model_registry
 
-from trainer import trainer_synapse
+from trainer import trainer_synapse, gastrointestinal
 from icecream import ic
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--root_path', type=str,
-                    default='/data/LarryXu/Synapse/preprocessed_data/train_npz', help='root dir for data')
-parser.add_argument('--output', type=str, default='/output/sam/results')
+parser.add_argument('--train_root_path', type=str,
+                    default=r'data\map_1-1_gastrointestinal_coco\train', help='root dir for data')
+parser.add_argument('--valid_root_path', type=str,
+                    default=r'data\map_1-1_gastrointestinal_coco\valid', help='root dir for data')
+parser.add_argument('--output', type=str, default=r'output\MedSAM\results')
 parser.add_argument('--dataset', type=str,
                     default='Synapse', help='experiment_name')
 parser.add_argument('--list_dir', type=str,
@@ -31,11 +33,11 @@ parser.add_argument('--max_epochs', type=int,
 parser.add_argument('--stop_epoch', type=int,
                     default=160, help='maximum epoch number to train')
 parser.add_argument('--batch_size', type=int,
-                    default=12, help='batch_size per gpu')
-parser.add_argument('--n_gpu', type=int, default=2, help='total gpu')
+                    default=2, help='batch_size per gpu')
+parser.add_argument('--n_gpu', type=int, default=1, help='total gpu')
 parser.add_argument('--deterministic', type=int, default=1,
                     help='whether use deterministic training')
-parser.add_argument('--base_lr', type=float, default=0.005,
+parser.add_argument('--base_lr', type=float, default=0.0001,
                     help='segmentation network learning rate')
 parser.add_argument('--img_size', type=int,
                     default=512, help='input patch size of network input')
@@ -43,7 +45,7 @@ parser.add_argument('--seed', type=int,
                     default=1234, help='random seed')
 parser.add_argument('--vit_name', type=str,
                     default='vit_b', help='select one vit model')
-parser.add_argument('--ckpt', type=str, default='checkpoints/sam_vit_b_01ec64.pth',
+parser.add_argument('--ckpt', type=str, default=r'MedSAM\medsam_vit_b.pth',
                     help='Pretrained checkpoint')
 parser.add_argument('--lora_ckpt', type=str, default=None, help='Finetuned lora checkpoint')
 parser.add_argument('--rank', type=int, default=4, help='Rank for LoRA adaptation')
@@ -68,13 +70,20 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
     dataset_name = args.dataset
+    # dataset_config = {
+    #     'Synapse': {
+    #         'root_path': args.root_path,
+    #         'list_dir': args.list_dir,
+    #         'num_classes': args.num_classes,
+    #     }
+    # }
     dataset_config = {
-        'Synapse': {
-            'root_path': args.root_path,
-            'list_dir': args.list_dir,
+        'gastrointestinal': {
+            'root_path': args.train_root_path,
             'num_classes': args.num_classes,
         }
     }
+
     args.is_pretrain = True
     args.exp = dataset_name + '_' + str(args.img_size)
     snapshot_path = os.path.join(args.output, "{}".format(args.exp))
@@ -118,5 +127,5 @@ if __name__ == "__main__":
     with open(config_file, 'w') as f:
         f.writelines(config_items)
 
-    trainer = {'Synapse': trainer_synapse}
+    trainer = {'gastrointestinal': gastrointestinal}
     trainer[dataset_name](args, net, snapshot_path, multimask_output, low_res)

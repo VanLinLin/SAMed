@@ -192,6 +192,18 @@ class LoRA_Sam(nn.Module):
 
 
 if __name__ == "__main__":
-    sam = sam_model_registry["vit_b"](checkpoint="sam_vit_b_01ec64.pth")
+    from torchinfo import summary
+
+    sam, img_embedding_size = sam_model_registry['vit_b'](image_size=512,
+                                                                num_classes=8,
+                                                                checkpoint=r'MedSAM\medsam_vit_b.pth')
     lora_sam = LoRA_Sam(sam, 4)
-    lora_sam.sam.image_encoder(torch.rand(size=(1, 3, 1024, 1024)))
+    # lora_sam.sam.image_encoder(torch.rand(size=(1, 3, 512, 512)))
+
+    # summary(model=lora_sam.sam.image_encoder, 
+    #         input_data=torch.rand(size=(1, 3, 512, 512)),
+    #         col_names=["input_size", "output_size", "num_params", "trainable"],
+    #         row_settings=["var_names"])
+    
+    summary(lora_sam.sam.image_encoder.blocks[0],
+            col_names=["trainable"])
