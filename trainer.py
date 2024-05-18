@@ -201,8 +201,10 @@ def gastrointestinal(args, model, snapshot_path, multimask_output, low_res):
     stop_epoch = args.stop_epoch
 
     max_iterations = args.max_epochs * len(trainloader)  # max_epoch = max_iterations // len(trainloader) + 1
-    
+    valid_max_iterations = args.max_epochs * len(validloader)
+
     logging.info(f"{len(trainloader)} iterations per epoch. {max_iterations} max iterations ")
+    logging.info(f"{len(validloader)} iterations per epoch. {valid_max_iterations} max iterations ")
     best_losses = np.inf
     
     def train_one_epoch(train_dataloader, max_iterations, writer, optimizer):
