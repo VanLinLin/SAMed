@@ -173,13 +173,15 @@ def gastrointestinal(args, model, snapshot_path, multimask_output, low_res):
     trainloader = DataLoader(db_train, 
                              batch_size=batch_size, 
                              shuffle=True, 
+                             drop_last=True,
                             #  num_workers=8, 
-                             pin_memory=True,
+                            #  pin_memory=True,
                              worker_init_fn=worker_init_fn)
     
     validloader = DataLoader(db_valid,
                              batch_size=batch_size,
-                             pin_memory=True,
+                             drop_last=True,
+                            #  pin_memory=True,
                              worker_init_fn=worker_init_fn)
 
     if args.n_gpu > 1:
