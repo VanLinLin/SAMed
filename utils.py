@@ -3,6 +3,7 @@ import numpy as np
 import torch
 from medpy import metric
 from scipy.ndimage import zoom
+import matplotlib.pyplot as plt
 import torch.nn as nn
 import SimpleITK as sitk
 import torch.nn.functional as F
@@ -113,68 +114,85 @@ def calculate_metric_percase(pred, gt):
 
 def test_single_volume(image, label, net, classes, multimask_output, patch_size=[256, 256], input_size=[224, 224],
                        test_save_path=None, case=None, z_spacing=1):
+    print(f'{image.dtype=}, {image.shape}')
     image, label = image.squeeze(0).cpu().detach().numpy(), label.squeeze(0).cpu().detach().numpy()
-    if len(image.shape) == 3:
-        prediction = np.zeros_like(label)
-        for ind in range(image.shape[0]):
-            slice = image[ind, :, :]
-            x, y = slice.shape[0], slice.shape[1]
-            if x != input_size[0] or y != input_size[1]:
-                slice = zoom(slice, (input_size[0] / x, input_size[1] / y), order=3)  # previous using 0
-            new_x, new_y = slice.shape[0], slice.shape[1]  # [input_size[0], input_size[1]]
-            if new_x != patch_size[0] or new_y != patch_size[1]:
-                slice = zoom(slice, (patch_size[0] / new_x, patch_size[1] / new_y), order=3)  # previous using 0, patch_size[0], patch_size[1]
-            inputs = torch.from_numpy(slice).unsqueeze(0).unsqueeze(0).float().cuda()
-            inputs = repeat(inputs, 'b c h w -> b (repeat c) h w', repeat=3)
-            net.eval()
-            with torch.no_grad():
-                outputs = net(inputs, multimask_output, patch_size[0])
-                output_masks = outputs['masks']
-                out = torch.argmax(torch.softmax(output_masks, dim=1), dim=1).squeeze(0)
-                out = out.cpu().detach().numpy()
-                out_h, out_w = out.shape
-                if x != out_h or y != out_w:
-                    pred = zoom(out, (x / out_h, y / out_w), order=0)
-                else:
-                    pred = out
-                prediction[ind] = pred
-        # only for debug
-        # if not os.path.exists('/output/images/pred'):
-        #     os.makedirs('/output/images/pred')
-        # if not os.path.exists('/output/images/label'):
-        #     os.makedirs('/output/images/label')
-        # assert prediction.shape[0] == label.shape[0]
-        # for i in range(label.shape[0]):
-        #     imageio.imwrite(f'/output/images/pred/pred_{i}.png', prediction[i])
-        #     imageio.imwrite(f'/output/images/label/label_{i}.png', label[i])
-        # temp = input('kkpsa')
-    else:
-        x, y = image.shape[-2:]
+    print(f'{image.shape=}, {label.shape=}')
+    # if len(image.shape) == 3:
+    #     prediction = np.zeros_like(label)
+    #     for ind in range(image.shape[0]):
+    #         slice = image[ind, :, :]
+    #         print(f'{slice.shape=}')
+    #         x, y = slice.shape[0], slice.shape[1]
+    #         print(f'{x=}, {y=}')
+    #         if x != input_size[0] or y != input_size[1]:
+    #             slice = zoom(slice, (input_size[0] / x, input_size[1] / y), order=3)  # previous using 0
+    #         new_x, new_y = slice.shape[0], slice.shape[1]  # [input_size[0], input_size[1]]
+    #         if new_x != patch_size[0] or new_y != patch_size[1]:
+    #             slice = zoom(slice, (patch_size[0] / new_x, patch_size[1] / new_y), order=3)  # previous using 0, patch_size[0], patch_size[1]
+    #         inputs = torch.from_numpy(slice).unsqueeze(0).unsqueeze(0).float().cuda()
+    #         inputs = repeat(inputs, 'b c h w -> b (repeat c) h w', repeat=3)
+    #         net.eval()
+    #         with torch.no_grad():
+    #             outputs = net(inputs, multimask_output, patch_size[0])
+    #             output_masks = outputs['masks']
+    #             out = torch.argmax(torch.softmax(output_masks, dim=1), dim=1).squeeze(0)
+    #             out = out.cpu().detach().numpy()
+    #             print(f'{out.shape=}')
+    #             out_h, out_w = out.shape
+    #             print(f'{out_h=}, {out_w=}')
+    #             if x != out_h or y != out_w:
+    #                 pred = zoom(out, (x / out_h, y / out_w), order=0)
+    #             else:
+    #                 pred = out
+    #             print(f'{pred.shape=}, {prediction.shape=}, {ind=}')
+    #             prediction[ind] = pred
+    #     # only for debug
+    #     # if not os.path.exists('/output/images/pred'):
+    #     #     os.makedirs('/output/images/pred')
+    #     # if not os.path.exists('/output/images/label'):
+    #     #     os.makedirs('/output/images/label')
+    #     # assert prediction.shape[0] == label.shape[0]
+    #     # for i in range(label.shape[0]):
+    #     #     imageio.imwrite(f'/output/images/pred/pred_{i}.png', prediction[i])
+    #     #     imageio.imwrite(f'/output/images/label/label_{i}.png', label[i])
+    #     # temp = input('kkpsa')
+    # else:
+    x, y = image.shape[-2:]
+    if x != patch_size[0] or y != patch_size[1]:
+        image = zoom(image, (patch_size[0] / x, patch_size[1] / y), order=3)
+    inputs = torch.from_numpy(image).unsqueeze(
+        0).float().cuda()
+    print(f'{inputs.shape=}')
+    # inputs = repeat(inputs, 'b c h w -> b (repeat c) h w', repeat=3)
+    net.eval()
+    with torch.no_grad():
+        outputs = net(inputs, multimask_output, patch_size[0])
+        output_masks = outputs['masks']
+        out = torch.argmax(torch.softmax(output_masks, dim=1), dim=1).squeeze(0)
+        prediction = out.cpu().detach().numpy()
         if x != patch_size[0] or y != patch_size[1]:
-            image = zoom(image, (patch_size[0] / x, patch_size[1] / y), order=3)
-        inputs = torch.from_numpy(image).unsqueeze(
-            0).unsqueeze(0).float().cuda()
-        inputs = repeat(inputs, 'b c h w -> b (repeat c) h w', repeat=3)
-        net.eval()
-        with torch.no_grad():
-            outputs = net(inputs, multimask_output, patch_size[0])
-            output_masks = outputs['masks']
-            out = torch.argmax(torch.softmax(output_masks, dim=1), dim=1).squeeze(0)
-            prediction = out.cpu().detach().numpy()
-            if x != patch_size[0] or y != patch_size[1]:
-                prediction = zoom(prediction, (x / patch_size[0], y / patch_size[1]), order=0)
+            prediction = zoom(prediction, (x / patch_size[0], y / patch_size[1]), order=0)
     metric_list = []
     for i in range(1, classes + 1):
         metric_list.append(calculate_metric_percase(prediction == i, label == i))
 
     if test_save_path is not None:
-        img_itk = sitk.GetImageFromArray(image.astype(np.float32))
-        prd_itk = sitk.GetImageFromArray(prediction.astype(np.float32))
-        lab_itk = sitk.GetImageFromArray(label.astype(np.float32))
-        img_itk.SetSpacing((1, 1, z_spacing))
-        prd_itk.SetSpacing((1, 1, z_spacing))
-        lab_itk.SetSpacing((1, 1, z_spacing))
-        sitk.WriteImage(prd_itk, test_save_path + '/' + case + "_pred.nii.gz")
-        sitk.WriteImage(img_itk, test_save_path + '/' + case + "_img.nii.gz")
-        sitk.WriteImage(lab_itk, test_save_path + '/' + case + "_gt.nii.gz")
+        plt.subplot(131)
+        plt.imshow(label)
+
+        plt.subplot(132)
+        plt.imshow(np.transpose(image,(2,1,0)))
+
+        plt.subplot(133)
+        plt.imshow(prediction)
+        plt.show()
+        # img_itk = sitk.GetImageFromArray(image.astype(np.float32))
+        # prd_itk = sitk.GetImageFromArray(prediction.astype(np.float32))
+        # lab_itk = sitk.GetImageFromArray(label.astype(np.float32))
+        # img_itk.SetSpacing((1, 1, z_spacing))
+        # prd_itk.SetSpacing((1, 1, z_spacing))
+        # lab_itk.SetSpacing((1, 1, z_spacing))
+        # sitk.WriteImage(prd_itk, test_save_path + '/' + case + "_pred.nii.gz")
+        # sitk.WriteImage(img_itk, test_save_path + '/' + case + "_img.nii.gz")
+        # sitk.WriteImage(lab_itk, test_save_path + '/' + case + "_gt.nii.gz")
     return metric_list

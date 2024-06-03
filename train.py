@@ -15,6 +15,7 @@ from trainer import trainer_synapse, gastrointestinal
 from icecream import ic
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--local_rank', default=0, type=int)
 parser.add_argument('--train_root_path', type=str,
                     default=r'data\map_1-1_gastrointestinal_coco\train', help='root dir for data')
 parser.add_argument('--valid_root_path', type=str,

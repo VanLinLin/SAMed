@@ -18,6 +18,9 @@ from utils import DiceLoss, Focal_loss
 from torchvision import transforms
 from icecream import ic
 from pathlib import Path
+import torch.distributed as dist
+from torch.utils.data.distributed import DistributedSampler
+# https://medium.com/ching-i/pytorch-%E5%88%86%E6%95%A3%E5%BC%8F%E8%A8%93%E7%B7%B4-distributeddataparallel-%E5%AF%A6%E4%BD%9C%E7%AF%87-35c762cb7e08
 
 
 def calc_loss(outputs, low_res_label_batch, ce_loss, dice_loss, dice_weight:float=0.8):
@@ -139,6 +142,13 @@ def trainer_synapse(args, model, snapshot_path, multimask_output, low_res):
 train_iter_num = 0
 valid_iter_num = 0
 def gastrointestinal(args, model, snapshot_path, multimask_output, low_res):
+    # 設置進程通訊的後端為 nccl
+    dist.init_process_group(backend='nccl')
+    # 同步所有進程
+    dist.barrier()
+    # 獲取當前進程組內的所有進程數
+    world_size = dist.get_world_size()
+
     from datasets.gastrointestinal import Gastrointestinal, RandomGenerator
     logging.basicConfig(filename=snapshot_path + "/gastrointestinal_log.txt", level=logging.INFO,
                         format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
@@ -163,6 +173,10 @@ def gastrointestinal(args, model, snapshot_path, multimask_output, low_res):
                                     [RandomGenerator(output_size=[args.img_size, args.img_size], 
                                                      low_res=[low_res, low_res],
                                                      split='valid')]))
+    # 數據平行化
+    # 將數據集劃分給每一個進程，避免進程間的數據重複
+    train_sampler = DistributedSampler(db_train)
+    valid_sampler = DistributedSampler(db_valid)
 
     print(f"The length of train set is: {len(db_train)}")
     print(f"The length of valid set is: {len(db_valid)}")
@@ -171,21 +185,33 @@ def gastrointestinal(args, model, snapshot_path, multimask_output, low_res):
         random.seed(args.seed + worker_id)
 
     trainloader = DataLoader(db_train, 
+                             sampler=train_sampler,
+                             prefetch_factor=2,
                              batch_size=batch_size, 
                              shuffle=True, 
                              drop_last=True,
-                            #  num_workers=8, 
+                             num_workers=2, 
                             #  pin_memory=True,
                              worker_init_fn=worker_init_fn)
     
     validloader = DataLoader(db_valid,
+                             sampler=valid_sampler,
+                             prefetch_factor=2,
                              batch_size=batch_size,
                              drop_last=True,
+                             num_workers=2, 
                             #  pin_memory=True,
                              worker_init_fn=worker_init_fn)
 
-    if args.n_gpu > 1:
-        model = nn.DataParallel(model)
+    # if args.n_gpu > 1:
+    #     model = nn.DataParallel(model)
+    device = torch.device("cuda", args.local_rank)
+    model = model.to(device)
+    model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
+    model = torch.nn.parallel.DistributedDataParallel(model, 
+                                                    device_ids=[args.local_rank], 
+                                                    output_device=args.local_rank)
+
     model.train()
     ce_loss = CrossEntropyLoss()
     dice_loss = DiceLoss(num_classes + 1)
@@ -208,7 +234,7 @@ def gastrointestinal(args, model, snapshot_path, multimask_output, low_res):
     logging.info(f"{len(trainloader)} iterations per epoch. {max_iterations} max iterations ")
     logging.info(f"{len(validloader)} iterations per epoch. {valid_max_iterations} max iterations ")
     best_losses = np.inf
-    
+
     def train_one_epoch(train_dataloader, max_iterations, writer, optimizer):
         global train_iter_num
         for i_batch, sampled_batch in enumerate(train_dataloader):
@@ -277,13 +303,15 @@ def gastrointestinal(args, model, snapshot_path, multimask_output, low_res):
 
     for epoch_num in tqdm(range(max_epoch), ncols=70, desc='Training'):
         print()
+        train_sampler.set_epoch(epoch_num)
+        
         logging.info(f'{"*"*10}Start training{"*"*10}')
         train_one_epoch(train_dataloader=trainloader,
                         max_iterations=max_iterations,
                         writer=writer,
                         optimizer=optimizer)
         
-        
+        valid_sampler.set_epoch(epoch_num)
         logging.info(f'{"*"*10}Start validing{"*"*10}')
         valid_loss = valid_one_epoch(valid_dataloader=validloader,
                                      writer=writer)
