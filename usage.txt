@@ -1,1 +1,0 @@
-python .\train.py --dataset gastrointestinal --num_classes 2 --img_size 512 --AdamW --warmup --batch_size 16
