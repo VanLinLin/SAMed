@@ -42,7 +42,7 @@ nibabel==4.0.2
 numpy==1.21.6
 onnx==1.13.1
 onnxruntime==1.14.1
-opencv-python==4.5.4.58
+opencv-python==4.9.0.80
 packaging==24.0
 parso==0.8.4
 pillow==10.3.0
@@ -68,9 +68,6 @@ stack-data==0.6.3
 sympy==1.12
 tensorboard==2.16.2
 tensorboard-data-server==0.7.2
-torch==1.13.1+cu117
-torchinfo==1.8.0
-torchvision==0.14.1+cu117
 tornado==6.4
 tqdm==4.62.3
 traitlets==5.14.3

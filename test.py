@@ -9,6 +9,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 import torch.backends.cudnn as cudnn
+import matplotlib.pyplot as plt
 from utils import test_single_volume
 from importlib import import_module
 from segment_anything import sam_model_registry
@@ -18,6 +19,7 @@ from utils import DiceLoss
 from datasets.gastrointestinal import Gastrointestinal, RandomGenerator
 from pathlib import Path
 from torchvision import transforms
+from SurfaceDice import compute_dice_coefficient
 
 from icecream import ic
 
@@ -66,6 +68,25 @@ def calc_loss(outputs, low_res_label_batch, ce_loss, dice_loss, dice_weight:floa
     loss = (1 - dice_weight) * loss_ce + dice_weight * loss_dice
     return loss, loss_ce, loss_dice
 
+dice_list = []
+def calc_dice(image_batch, outputs, label_batch):
+    image = image_batch[0, :, :, :]
+    image = (image - image.min()) / (image.max() - image.min())
+    output_masks = outputs['masks']
+    output_masks = torch.argmax(torch.softmax(output_masks, dim=1), dim=1, keepdim=True)
+    labs = label_batch[0, ...].unsqueeze(dim=0)
+    output_masks = output_masks.squeeze(dim=0)
+    value = compute_dice_coefficient(labs>0, output_masks>0)
+    print(f'\n{value}')
+    dice_list.append(value)
+
+    if value == 0.0:
+        plt.subplot(121)
+        plt.imshow(labs.permute(1,2,0).cpu())
+        plt.subplot(122)
+        plt.imshow(output_masks.permute(1,2,0).cpu())
+        plt.show()
+
 def test_one_epoch(model, valid_dataloader):
     loss_list, loss_ce_list, loss_dice_list = [], [], []
     for i_batch, sampled_batch in tqdm(enumerate(valid_dataloader)):
@@ -77,6 +98,8 @@ def test_one_epoch(model, valid_dataloader):
 
         outputs = model(image_batch, multimask_output, args.img_size)
         loss, loss_ce, loss_dice = calc_loss(outputs, low_res_label_batch, CrossEntropyLoss(), DiceLoss(args.num_classes + 1), 0.8)
+
+        calc_dice(image_batch, outputs, label_batch)
 
         logging.info(f'[Test phase] loss: {loss.item():.4f}, loss_ce: {loss_ce.item():.4f}, loss_dice: {loss_dice.item():.4f}')
         loss_list.append(loss.item())
@@ -112,7 +135,7 @@ if __name__ == '__main__':
     parser.add_argument('--deterministic', type=int, default=1, help='whether use deterministic training')
     parser.add_argument('--ckpt', type=str, default=r'MedSAM\medsam_vit_b.pth',
                         help='Pretrained checkpoint')
-    parser.add_argument('--lora_ckpt', type=str, default=r'output\MedSAM\results\gastrointestinal_512_pretrain_vit_b_epo200_bs5_lr0.0001\best_epoch=29_valid_loss=0.088.pth', help='The checkpoint from LoRA')
+    parser.add_argument('--lora_ckpt', type=str, default=r'output\MedSAM\results\gastrointestinal_512_pretrain_vit_b_epo200_bs5_lr0.0001\best_epoch=102_valid_loss=0.068.pth', help='The checkpoint from LoRA')
     parser.add_argument('--vit_name', type=str, default='vit_b', help='Select one vit model')
     parser.add_argument('--rank', type=int, default=4, help='Rank for LoRA adaptation')
     parser.add_argument('--module', type=str, default='sam_lora_image_encoder')
@@ -189,3 +212,4 @@ if __name__ == '__main__':
 
     test_one_epoch(model=net,
                    valid_dataloader=testloader)
+    print(f'Mean dice of Tuned MedSAM with LoRA: {sum(dice_list) / len(dice_list):.4f}')
